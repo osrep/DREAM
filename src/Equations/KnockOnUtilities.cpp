@@ -534,6 +534,31 @@ void KnockOnUtilities::EstimateBoundingTheta(
         theta2 = 2 * M_PI;
         return;
     }
+    // A trapped orbit that passes through theta = 0 is stored with theta1 > theta2
+    // (see BounceSurfaceQuantity::ThetaBounceAtIt). This happens when theta_Bmin lies
+    // in the lower half plane, e.g. in up-down asymmetric numerical equilibria.
+    // Unwrap each interval to theta1 <= theta2 and shift it by whole turns so that it
+    // contains theta_Bmin, which every orbit reaches; the intervals can then be
+    // intersected directly. The geometry is periodic in theta, so the integrand
+    // accepts angles outside [0, 2*pi].
+    real_t thetaBmin;
+    grid_primary->GetRadialGrid()->GetFluxSurfaceAverager()->GetBmin(
+        ir, FVM::FLUXGRIDTYPE_DISTRIBUTION, &thetaBmin
+    );
+    auto unwrap = [thetaBmin](real_t &t1, real_t &t2) {
+        if (t1 > t2) {
+            t1 -= 2 * M_PI;
+        }
+        while (t2 < thetaBmin) {
+            t1 += 2 * M_PI;
+            t2 += 2 * M_PI;
+        }
+        while (t1 > thetaBmin) {
+            t1 -= 2 * M_PI;
+            t2 -= 2 * M_PI;
+        }
+    };
+
     real_t xi0_f2 = grid_knockon->GetMomentumGrid(ir)->GetP2_f(j + 1);
     if (xi0_f2 <= RELAXED_EPS) {
         // for negative xi0, smaller xi means bigger available poloidal range
@@ -544,8 +569,12 @@ void KnockOnUtilities::EstimateBoundingTheta(
         theta1 = grid_knockon->GetThetaBounce1_f2(ir, 0, j + 1);
         theta2 = grid_knockon->GetThetaBounce2_f2(ir, 0, j + 1);
     }
-    theta1 = std::max(theta1, grid_primary->GetThetaBounce1(ir, 0, l));
-    theta2 = std::min(theta2, grid_primary->GetThetaBounce2(ir, 0, l));
+    real_t theta1_primary = grid_primary->GetThetaBounce1(ir, 0, l);
+    real_t theta2_primary = grid_primary->GetThetaBounce2(ir, 0, l);
+    unwrap(theta1, theta2);
+    unwrap(theta1_primary, theta2_primary);
+    theta1 = std::max(theta1, theta1_primary);
+    theta2 = std::min(theta2, theta2_primary);
     // we nudge the endpoints into the interval to ensure that we won't
     // be culled due to roundoff
     real_t theta_range = theta2 - theta1;
@@ -611,9 +640,12 @@ real_t KnockOnUtilities::EvaluateDeltaMatrixElementOnGrid(
         const real_t xi0T = rg->GetXi0TrappedBoundary(ir);
         if (xi01_f2 > xi0T) {
             xi01 = xi01_f2;  // passing on positive side
-        } else {
+        } else if (fabs(xi01_f1) > RELAXED_EPS) {
             xi01 = xi01_f1;  // passing on negative side
         }
+        // Otherwise the cell is [0, xi01_f2], trapped and only near (not across) the
+        // boundary. xi01_f1 = 0 is a zero-width orbit that reaches no poloidal angle,
+        // so keep the cell centre.
     }
 
     // special treatment in cell containing 0 analogous to what BounceAverager does
