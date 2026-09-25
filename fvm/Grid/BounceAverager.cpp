@@ -351,23 +351,13 @@ real_t BounceAverager::EvaluateBounceIntegralOverP2(len_t ir, len_t i, len_t j, 
             xi_f1 = xi_f2;
             xi_f2 = xi_tmp;
         }
-        if(fluxSurfaceAverager->shouldCellAverageBounceIntegral(ir,xi_f1,xi_f2, fluxGridType)){
+        // Cells containing, or near, the trapped-passing boundary, and the cell
+        // containing xi0 = 0, are averaged over the cell in xi0. In the xi0 = 0
+        // cell the negative-pitch trapped part carries no volume of its own (it is
+        // described by the positive-pitch orbits), which the cell average accounts for.
+        if(fluxSurfaceAverager->shouldCellAverageBounceIntegral(ir,xi_f1,xi_f2, fluxGridType)
+           || (xi_f1 < 0 && xi_f2 > 0))
             return fluxSurfaceAverager->EvaluateCellAveragedBounceIntegralOverP2(ir,xi_f1,xi_f2,fluxGridType,F_ref,F_ref_par,Flist);
-        
-        // Treat singular xi0=0 case in inhomogeneous magnetic fields.
-        // (unless the cell also contains the trapping boundary, in which 
-        //  case it would have been treated by the previous block)
-        } else if(xi_f1 < 0 && xi_f2 > 0){
-            // If cell contains xi0=0, take the bounce integrals as 
-            // the xi-average over the cell volume under the assumption that
-            // the integrand varies linearly from its value at the upper cell face
-            // to 0 at xi0=0.
-            fluxGridType = FLUXGRIDTYPE_P2;
-            j += 1;
-            isTrapped = BounceSurfaceQuantity::IsTrapped(ir,i,j,fluxGridType,grid);
-            xi0 = GetXi0(ir,i,j,fluxGridType);
-            SingularPointCorrection = 0.5;
-        }
     }
     
     int_t *Flist_eval = nullptr;
