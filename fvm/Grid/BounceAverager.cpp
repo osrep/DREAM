@@ -510,11 +510,20 @@ bool BounceAverager::SetIsTrapped(bool **&isTrapped, real_t **&theta_b1, real_t 
                     if(std::abs(xi0)<100*realeps){ // xi0=0 case: infinitely deeply trapped
                         theta_b1[ir][pind] = theta_Bmin;
                         theta_b2[ir][pind] = theta_Bmin;
-                    } else 
+                    } else {
                         FluxSurfaceAverager::FindBouncePoints(
                             ir,Bmin, theta_Bmin, theta_Bmax, fluxSurfaceAverager, xi0, fluxGridType,
                             &theta_b1[ir][pind],&theta_b2[ir][pind], gsl_fsolver, geometryIsSymmetric
                         );
+                        // When theta_Bmin > theta_Bmax, FindThetas returns theta_b1 in
+                        // [theta_Bmax, theta_Bmin] and theta_b2 in [theta_Bmin-2*pi, theta_Bmax],
+                        // and a wrapped orbit is stored with theta_b1 > theta_b2. An orbit that
+                        // reaches theta_Bmax (xi0 within roundoff of the trapped-passing boundary)
+                        // then gets theta_b1 = theta_b2 = theta_Bmax, which reads as zero width.
+                        // Store it as the full turn, as for theta_Bmin < theta_Bmax.
+                        if(theta_Bmin > theta_Bmax && theta_b1[ir][pind] <= theta_b2[ir][pind])
+                            theta_b1[ir][pind] = theta_b2[ir][pind] - 2*M_PI;
+                    }
                 } else {
                     isTrapped[ir][pind] = false;
                     theta_b1[ir][pind] = theta_Bmax - 2*M_PI;
