@@ -10,6 +10,8 @@
 #include "DREAM/Equations/EffectiveCriticalField.hpp"
 #include "DREAM/Equations/RunawayFluid.hpp"
 #include "DREAM/IO.hpp"
+#include <cmath>
+#include "DREAM/DREAMException.hpp"
 #include "DREAM/NotImplementedException.hpp"
 #include "FVM/TimeKeeper.hpp"
 #include <limits>
@@ -317,18 +319,36 @@ void RunawayFluid::FindRoot_fdf_bounded(real_t x_lower, real_t x_upper, real_t &
  * if a root of the provided gsl_function is not in the interval.
  */
 void RunawayFluid::FindInterval(real_t *x_lower, real_t *x_upper, gsl_function gsl_func ){
-    bool isLoUnderestimate = (gsl_func.function(*x_lower, gsl_func.params ) > 0);
-    bool isUpOverestimate = (gsl_func.function(*x_upper, gsl_func.params ) < 0);
-    while(!isLoUnderestimate){
+    // A NaN bound or function value makes both comparisons false, and the
+    // loops below would never end. Fail the time step instead, so that the
+    // caller can retry it. 200 steps scale a bound by 0.7^200 or 1.4^200.
+    const len_t max_iter = 200;
+    auto evaluate = [&gsl_func,x_lower,x_upper](real_t x) {
+        real_t f = gsl_func.function(x, gsl_func.params);
+        if (!std::isfinite(x) || !std::isfinite(f))
+            throw DREAMException(
+                "RunawayFluid::FindInterval: non-finite value in the critical-momentum "
+                "search: f(%.16g) = %.16g, interval [%.16g, %.16g].",
+                x, f, *x_lower, *x_upper
+            );
+        return f;
+    };
+    bool isLoUnderestimate = (evaluate(*x_lower) > 0);
+    bool isUpOverestimate = (evaluate(*x_upper) < 0);
+    for (len_t iter = 0; !isLoUnderestimate; iter++) {
+        if (iter == max_iter)
+            throw DREAMException("RunawayFluid::FindInterval: no lower bound found, x_lower = %.16g.", *x_lower);
         *x_upper = *x_lower;
         *x_lower *= 0.7;
-        isLoUnderestimate = (gsl_func.function(*x_lower, gsl_func.params ) > 0);
+        isLoUnderestimate = (evaluate(*x_lower) > 0);
         isUpOverestimate = true;
     }
-    while (!isUpOverestimate){
+    for (len_t iter = 0; !isUpOverestimate; iter++) {
+        if (iter == max_iter)
+            throw DREAMException("RunawayFluid::FindInterval: no upper bound found, x_upper = %.16g.", *x_upper);
         *x_lower = *x_upper;
         *x_upper *= 1.4;
-        isUpOverestimate = (gsl_func.function(*x_upper, gsl_func.params ) < 0);
+        isUpOverestimate = (evaluate(*x_upper) < 0);
     }
 }
 
