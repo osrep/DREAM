@@ -400,6 +400,11 @@ real_t BounceAverager::EvaluateBounceIntegralOverP2(len_t ir, len_t i, len_t j, 
 
     real_t theta_b1 = BounceSurfaceQuantity::Theta_B1(ir,i,j,fluxGridType,grid);
     real_t theta_b2 = BounceSurfaceQuantity::Theta_B2(ir,i,j,fluxGridType,grid);
+    // A trapped orbit that passes through theta = 0 is stored with theta_b1 > theta_b2
+    // (see BounceSurfaceQuantity::ThetaBounceAtIt); unwrap it so that the interval
+    // length and the integration limits below are correct.
+    if(isTrapped && theta_b1 > theta_b2)
+        theta_b1 -= 2*M_PI;
 
     if(geometryIsSymmetric && theta_b1>0) // there are two identical and mirrored intervals which contribute
         SingularPointCorrection *= 2;
