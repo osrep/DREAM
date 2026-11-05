@@ -456,11 +456,20 @@ void OrbitGeometry::Reset(FieldExtrema extrema, const std::vector<real_t> &theta
         for (real_t theta : angles) {
             const real_t B = impl->EvaluateField(theta);
             if (B < extrema.Bmin - tolerance || B > extrema.Bmax + tolerance)
-                throw DREAMException("KnockOnQuadrature: field disagrees with its extrema.");
+                throw DREAMException(
+                    "KnockOnQuadrature: field disagrees with its extrema: B(%.16g) = %.16g, "
+                    "Bmin = %.16g at theta %.16g, Bmax = %.16g at theta %.16g, tolerance %.3g, "
+                    "B/Bmin - 1 = %.3g, B/Bmax - 1 = %.3g.",
+                    theta, B, extrema.Bmin, extrema.thetaMin, extrema.Bmax, extrema.thetaMax,
+                    tolerance, B / extrema.Bmin - 1, B / extrema.Bmax - 1);
 
             if (!branch.B.empty()) {
                 if (B < branch.B.back() - tolerance)
-                    throw DREAMException("KnockOnQuadrature: expected a monotone magnetic branch.");
+                    throw DREAMException(
+                        "KnockOnQuadrature: expected a monotone magnetic branch: B(%.16g) = %.16g "
+                        "after %.16g at theta %.16g, tolerance %.3g, Bmin = %.16g at theta %.16g.",
+                        theta, B, branch.B.back(), branch.theta.back(), tolerance,
+                        extrema.Bmin, extrema.thetaMin);
                 // Skip roundoff plateaus so the field bracket stays ordered.
                 if (B <= branch.B.back())
                     continue;
