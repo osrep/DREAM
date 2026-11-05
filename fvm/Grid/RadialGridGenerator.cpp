@@ -120,6 +120,81 @@ const real_t EPSREL = 0;
 real_t RadialGridGenerator::FindMagneticFieldExtremum(
     len_t ir, int_t sgn, fluxGridType fluxGridType
 ) {
+    real_t theta = FindMagneticFieldExtremumInHalfPlane(ir, sgn, fluxGridType);
+
+    // The search above covers one half plane, [0, pi] or [pi, 2*pi]. When it
+    // returns an edge of that half plane (theta = 0 or pi), the extremum can lie
+    // just across the edge, in the other half plane: the field then keeps
+    // decreasing (for sgn = 1) on one side of the edge. On the ITER LUKE
+    // equilibrium the minimum of B lies at theta = 0.0216 on some surfaces while
+    // the search returned theta = 0, with B(0.0216)/B(0) - 1 = -7.3e-6. Check
+    // both sides of an edge and search the half plane that continues downhill.
+    real_t edge;
+    if (theta < 2*EPSABS || theta > 2*M_PI - 2*EPSABS)
+        edge = 0;
+    else if (fabs(theta - M_PI) < 2*EPSABS)
+        edge = M_PI;
+    else
+        return theta;
+
+    EvalBParams params = {ir, this, sgn};
+    gsl_function gsl_func;
+    gsl_func.function = (fluxGridType == FLUXGRIDTYPE_RADIAL) ? &(gslEvalB_f) : &(gslEvalB);
+    gsl_func.params = &(params);
+
+    const real_t d = 10*EPSABS;
+    const real_t f_edge = gsl_func.function(edge, gsl_func.params);
+    const real_t f_above = gsl_func.function(edge + d, gsl_func.params);
+    const real_t f_below = gsl_func.function(edge == 0 ? 2*M_PI - d : edge - d, gsl_func.params);
+    if (f_above < f_edge && f_above <= f_below)
+        return MinimizeOnInterval(&gsl_func, edge + d, edge, edge + M_PI);
+    else if (f_below < f_edge) {
+        if (edge == 0)
+            return MinimizeOnInterval(&gsl_func, 2*M_PI - d, M_PI, 2*M_PI);
+        else
+            return MinimizeOnInterval(&gsl_func, M_PI - d, 0, M_PI);
+    }
+    return edge;
+}
+
+/**
+ * Minimizes gsl_func on [theta_lower, theta_upper], starting from theta_guess,
+ * which must have a lower function value than both interval limits. Returns a
+ * limit when the minimum lies within 2*EPSABS of it, and 0 for 2*pi.
+ */
+real_t RadialGridGenerator::MinimizeOnInterval(
+    gsl_function *gsl_func, real_t theta_guess, real_t theta_lower, real_t theta_upper
+) {
+    // Without a bracket the minimizer cannot start: keep the limit next to the guess.
+    const real_t f_guess = gsl_func->function(theta_guess, gsl_func->params);
+    if (!(f_guess < gsl_func->function(theta_lower, gsl_func->params))
+        || !(f_guess < gsl_func->function(theta_upper, gsl_func->params))) {
+        real_t limit = (theta_guess - theta_lower < theta_upper - theta_guess) ? theta_lower : theta_upper;
+        return (limit >= 2*M_PI) ? limit - 2*M_PI : limit;
+    }
+    gsl_min_fminimizer_set(gsl_fmin, gsl_func, theta_guess, theta_lower, theta_upper);
+    for (len_t iter=0; iter<MAX_NUM_ITER; iter++) {
+        gsl_min_fminimizer_iterate(gsl_fmin);
+        real_t x_lo = gsl_min_fminimizer_x_lower(gsl_fmin);
+        real_t x_up = gsl_min_fminimizer_x_upper(gsl_fmin);
+        if (gsl_min_test_interval(x_lo, x_up, EPSABS, EPSREL) == GSL_SUCCESS)
+            break;
+    }
+    real_t extremum = gsl_min_fminimizer_x_minimum(gsl_fmin);
+    if (fabs(extremum - theta_lower) < 2*EPSABS)
+        extremum = theta_lower;
+    else if (fabs(extremum - theta_upper) < 2*EPSABS)
+        extremum = theta_upper;
+    return (extremum >= 2*M_PI) ? extremum - 2*M_PI : extremum;
+}
+
+/**
+ * Finds the extremum of the magnetic field in one half plane, [0, pi] or
+ * [pi, 2*pi], chosen from a guess. See FindMagneticFieldExtremum().
+ */
+real_t RadialGridGenerator::FindMagneticFieldExtremumInHalfPlane(
+    len_t ir, int_t sgn, fluxGridType fluxGridType
+) {
     real_t theta_lim_lower = 0, theta_lim_upper = M_PI;
 	real_t theta_guess;
 

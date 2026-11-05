@@ -26,6 +26,12 @@ namespace DREAM::FVM {
         virtual real_t FindMagneticFieldExtremum(
 			len_t ir, int_t sgn, enum fluxGridType
 		);
+        real_t FindMagneticFieldExtremumInHalfPlane(
+			len_t ir, int_t sgn, enum fluxGridType
+		);
+        real_t MinimizeOnInterval(
+			gsl_function*, real_t theta_guess, real_t theta_lower, real_t theta_upper
+		);
         gsl_min_fminimizer *gsl_fmin;
 
         len_t ntheta_interp;
